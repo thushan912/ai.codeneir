@@ -22,21 +22,21 @@ export default function Home() {
   }, [setIsMobile]);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <Header />
       
-      <main className="flex-1 min-h-0 overflow-hidden">
+      <main className="flex-1 overflow-hidden">
         {isMobile ? (
           <MobileTabsWrapper />
         ) : (
           <div className="h-full grid grid-cols-[1.2fr_1fr] gap-0">
             {/* Chat Panel */}
-            <div className="border-r border-white/10 min-h-0 overflow-hidden">
+            <div className="border-r border-white/10">
               <ChatPanel />
             </div>
             
             {/* Image Studio */}
-            <div className="min-h-0 overflow-hidden">
+            <div>
               <ImageStudio />
             </div>
           </div>
