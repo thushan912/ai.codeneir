@@ -66,11 +66,11 @@ export default function Header() {
   }[theme];
 
   return (
-    <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm sticky top-0 z-50">
-      <div className="flex items-center justify-between px-4 py-3">
+    <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 min-h-[64px]">
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="text-xl font-bold bg-gradient-to-r from-indigo-400 via-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+          <div className="text-lg md:text-xl font-bold bg-gradient-to-r from-indigo-400 via-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
             Chat & Create
           </div>
           <div className="text-xs text-white/60 hidden sm:block">

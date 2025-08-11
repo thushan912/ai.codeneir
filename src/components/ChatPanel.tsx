@@ -80,13 +80,15 @@ export default function ChatPanel() {
           throw new Error('Failed to get stream from API');
         }
 
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
-        let assistantContent = '';
+        // Type guard to check if stream is a ReadableStream
+        if (stream instanceof ReadableStream) {
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          let assistantContent = '';
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
           
@@ -134,6 +136,16 @@ export default function ChatPanel() {
         };
 
         setChatMessages([...updatedMessages, assistantMessage]);
+        } else {
+          // If not a ReadableStream, treat as regular response
+          const result = stream as { choices: { message: { content: string } }[] };
+          const assistantMessage: ChatMessage = {
+            role: 'assistant',
+            content: result.choices?.[0]?.message?.content || 'Stream response received',
+            id: uuidv4()
+          };
+          setChatMessages([...updatedMessages, assistantMessage]);
+        }
       } else {
         // Non-streaming mode
         const result = await pollinateText({
@@ -141,7 +153,7 @@ export default function ChatPanel() {
           messages: updatedMessages.map(({ id: _, ...msg }) => msg) as ChatMessage[],
           stream: false,
           signal: abortRef.current.signal
-        });
+        }) as { choices: { message: { content: string } }[] };
 
         const assistantMessage: ChatMessage = {
           role: 'assistant',

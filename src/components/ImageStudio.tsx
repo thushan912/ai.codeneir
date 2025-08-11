@@ -1,4 +1,4 @@
-// components/ImageStudio-fixed.tsx
+// components/ImageStudio.tsx
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
@@ -12,7 +12,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAppStore } from '@/lib/store';
 import { imageUrl, ASPECT_RATIOS, type AspectRatio } from '@/lib/pollinations';
-import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
@@ -49,21 +48,15 @@ export default function ImageStudio() {
 
   // Handle escape key to close fullscreen
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isFullscreen) {
-        closeFullscreen();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
       }
     };
 
-    if (isFullscreen) {
-      document.addEventListener('keydown', handleKeyDown);
-      // Prevent body scroll when fullscreen
-      document.body.style.overflow = 'hidden';
-    }
-
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
     };
   }, [isFullscreen]);
 
@@ -74,388 +67,496 @@ export default function ImageStudio() {
     setLoadError(false);
 
     // Generate new seed if not locked
-    const currentSeed = lockSeed ? seed : Math.floor(Math.random() * 1000000).toString();
     if (!lockSeed) {
-      setSeed(currentSeed);
+      setSeed(Math.floor(Math.random() * 1000000).toString());
     }
 
     const url = imageUrl({
-      prompt,
+      prompt: prompt.trim(),
       model: imageModel,
       width,
       height,
-      seed: currentSeed,
-      nologo,
+      seed: lockSeed ? seed : Math.floor(Math.random() * 1000000).toString(),
       enhance,
       safe,
-      private: isPrivate
+      private: isPrivate,
+      nologo,
+      referrer: 'ai-codeneir'
     });
 
     setCurrentImageUrl(url);
 
-    const imageData = {
-      id: uuidv4(),
-      prompt,
-      url,
-      params: {
-        model: imageModel,
-        width,
-        height,
-        seed: currentSeed,
-        nologo,
-        enhance,
-        safe,
-        private: isPrivate
-      },
-      timestamp: Date.now()
+    // Simulate loading time
+    const img = document.createElement('img');
+    img.onload = () => {
+      setIsGenerating(false);
+      
+      // Add to generated images store
+      const imageData = {
+        id: uuidv4(),
+        url,
+        prompt: prompt.trim(),
+        timestamp: Date.now(),
+        params: {
+          model: imageModel,
+          width,
+          height,
+          seed: lockSeed ? seed : 'random',
+          enhance,
+          safe,
+          nologo,
+          private: isPrivate
+        }
+      };
+      
+      addGeneratedImage(imageData);
+      toast.success('Image generated successfully!');
     };
-
-    addGeneratedImage(imageData);
+    
+    img.onerror = () => {
+      setIsGenerating(false);
+      setLoadError(true);
+      toast.error('Failed to generate image. Please try again.');
+    };
+    
+    img.src = url;
   };
 
-  const handleImageLoad = () => {
-    setIsGenerating(false);
-    setLoadError(false);
-  };
-
-  const handleImageError = () => {
-    setIsGenerating(false);
-    setLoadError(true);
-  };
-
-  const copyImageUrl = () => {
-    if (currentImageUrl) {
-      navigator.clipboard.writeText(currentImageUrl);
-      toast.success('Image URL copied to clipboard!');
-    }
-  };
-
-  const downloadImage = async () => {
-    if (currentImageUrl) {
-      try {
-        // Fetch the image as a blob to avoid opening in fullscreen
-        const response = await fetch(currentImageUrl);
-        const blob = await response.blob();
-        
-        // Create a URL for the blob
-        const blobUrl = window.URL.createObjectURL(blob);
-        
-        // Create download link
+  const downloadImage = () => {
+    if (!currentImageUrl) return;
+    
+    fetch(currentImageUrl)
+      .then(response => response.blob())
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = blobUrl;
+        link.href = url;
         link.download = `generated-image-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
-        // Clean up the blob URL
-        window.URL.revokeObjectURL(blobUrl);
-        
-        toast.success('Image downloaded successfully!');
-      } catch (error) {
-        console.error('Download failed:', error);
+        window.URL.revokeObjectURL(url);
+        toast.success('Image downloaded!');
+      })
+      .catch(() => {
         toast.error('Failed to download image');
-      }
-    }
+      });
   };
 
-  const openFullscreen = () => {
-    setIsFullscreen(true);
-  };
-
-  const closeFullscreen = () => {
-    setIsFullscreen(false);
+  const copyImageUrl = () => {
+    if (!currentImageUrl) return;
+    
+    navigator.clipboard.writeText(currentImageUrl)
+      .then(() => {
+        toast.success('Image URL copied to clipboard!');
+      })
+      .catch(() => {
+        toast.error('Failed to copy URL');
+      });
   };
 
   const generateVariation = () => {
-    if (currentImageUrl) {
-      handleGenerate();
-    }
-  };
-
-  const randomizeSeed = () => {
-    setSeed(Math.floor(Math.random() * 1000000).toString());
+    if (!prompt.trim()) return;
+    
+    // Unlock seed and generate new random seed for variation
+    setLockSeed(false);
+    handleGenerate();
   };
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Prompt Input */}
-        <div className="flex-shrink-0">
-          <Label className="text-white/80 text-sm mb-2 block">
-            Describe your image
-          </Label>
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="a neon fox, cinematic, rim light, 85mm..."
-            className="min-h-[120px] max-h-[300px] bg-white/10 border-white/20 text-white placeholder:text-white/50 resize-vertical focus:bg-white/15"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleGenerate();
-              }
-            }}
-          />
-        </div>
-
-        {/* Controls Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-shrink-0">
-          {/* Model Select */}
+      {/* Mobile Layout */}
+      <div className="md:hidden flex flex-col h-full relative">
+        {/* Compact Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-20">
+          {/* Prompt Input - Compact */}
           <div>
-            <Label className="text-white/80 text-xs mb-1 block">Model</Label>
-            <Select value={imageModel} onValueChange={setImageModel}>
-              <SelectTrigger className="bg-white/10 border-white/20 text-white h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="flux">flux</SelectItem>
-                <SelectItem value="turbo">turbo</SelectItem>
-                <SelectItem value="stability">stability</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-white/80 text-sm mb-1 block">
+              Describe your image
+            </Label>
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="a neon fox, cinematic..."
+              className="min-h-[80px] max-h-[120px] bg-white/10 border-white/20 text-white placeholder:text-white/50 resize-vertical focus:bg-white/15 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleGenerate();
+                }
+              }}
+            />
           </div>
 
-          {/* Aspect Ratio */}
-          <div>
-            <Label className="text-white/80 text-xs mb-1 block">Ratio</Label>
-            <Select value={aspectRatio} onValueChange={(value) => setAspectRatio(value as AspectRatio)}>
-              <SelectTrigger className="bg-white/10 border-white/20 text-white h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.keys(ASPECT_RATIOS).map((ratio) => (
-                  <SelectItem key={ratio} value={ratio}>
-                    {ratio}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Compact Controls */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-white/80 text-xs mb-1 block">Model</Label>
+              <Select value={imageModel} onValueChange={setImageModel}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="flux">flux</SelectItem>
+                  <SelectItem value="turbo">turbo</SelectItem>
+                  <SelectItem value="stability">stability</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white/80 text-xs mb-1 block">Size</Label>
+              <Select value={aspectRatio} onValueChange={(value: AspectRatio) => setAspectRatio(value)}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1:1">Square</SelectItem>
+                  <SelectItem value="3:4">Portrait</SelectItem>
+                  <SelectItem value="4:3">Landscape</SelectItem>
+                  <SelectItem value="9:16">Mobile</SelectItem>
+                  <SelectItem value="16:9">Wide</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Seed Input */}
-          <div className="relative">
-            <Label className="text-white/80 text-xs mb-1 block">Seed</Label>
-            <div className="flex gap-1">
-              <Input
-                value={seed}
-                onChange={(e) => setSeed(e.target.value)}
-                placeholder="random"
-                className="bg-white/10 border-white/20 text-white h-9 text-xs"
+          {/* Compact Options */}
+          <div className="flex gap-3 text-xs flex-wrap">
+            <div className="flex items-center space-x-1">
+              <Checkbox
+                id="enhance-mobile"
+                checked={enhance}
+                onCheckedChange={(checked) => setEnhance(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setLockSeed(!lockSeed)}
-                className="h-9 w-9 bg-white/10 border-white/20 hover:bg-white/20 flex-shrink-0"
-              >
-                {lockSeed ? <Lock className="h-3 w-3 text-white" /> : <Unlock className="h-3 w-3 text-white" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={randomizeSeed}
-                className="h-9 w-9 bg-white/10 border-white/20 hover:bg-white/20 flex-shrink-0"
-                title="Random seed"
-              >
-                <Shuffle className="h-3 w-3 text-white" />
-              </Button>
+              <Label htmlFor="enhance-mobile" className="text-white/80">Enhance</Label>
+            </div>
+            <div className="flex items-center space-x-1">
+              <Checkbox
+                id="safe-mobile"
+                checked={safe}
+                onCheckedChange={(checked) => setSafe(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
+              />
+              <Label htmlFor="safe-mobile" className="text-white/80">Safe</Label>
             </div>
           </div>
-        </div>
 
-        {/* Checkboxes */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="nologo"
-              checked={nologo}
-              onCheckedChange={(checked) => setNologo(checked as boolean)}
-            />
-            <Label htmlFor="nologo" className="text-white/80 text-sm">
-              No Logo
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="enhance"
-              checked={enhance}
-              onCheckedChange={(checked) => setEnhance(checked as boolean)}
-            />
-            <Label htmlFor="enhance" className="text-white/80 text-sm">
-              Enhance
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="safe"
-              checked={safe}
-              onCheckedChange={(checked) => setSafe(checked as boolean)}
-            />
-            <Label htmlFor="safe" className="text-white/80 text-sm">
-              Safe Mode
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="private"
-              checked={isPrivate}
-              onCheckedChange={(checked) => setIsPrivate(checked as boolean)}
-            />
-            <Label htmlFor="private" className="text-white/80 text-sm">
-              Private
-            </Label>
-          </div>
-        </div>
-
-        {/* Generate Button */}
-        <Button
-          onClick={handleGenerate}
-          disabled={!prompt.trim() || isGenerating}
-          className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white h-12 flex-shrink-0 w-full"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Image
-            </>
-          )}
-        </Button>
-      </div>
-
-      {/* Image Preview */}
-      <div className="flex-1 min-h-[200px] m-4 mt-0 rounded-2xl bg-black/30 border border-white/10 overflow-hidden relative flex flex-col">
-        {!currentImageUrl ? (
-          <div className="h-full flex items-center justify-center text-white/60">
-            <div className="text-center">
-              <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>Enter a prompt and click Generate Image</p>
-              <p className="text-sm mt-1">⌘/Ctrl + Enter to generate</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-auto">
-            {isGenerating && (
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
-                <div className="text-center text-white">
-                  <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
-                  <p>Generating your image...</p>
-                </div>
-              </div>
-            )}
-            
-            {loadError ? (
+          {/* Image Preview - Mobile */}
+          <div className="aspect-square rounded-xl bg-black/30 border border-white/10 overflow-hidden relative">
+            {!currentImageUrl ? (
               <div className="h-full flex items-center justify-center text-white/60">
                 <div className="text-center">
-                  <p>Failed to load image</p>
-                  <Button
-                    variant="ghost"
-                    onClick={handleGenerate}
-                    className="mt-2 text-white/70 hover:text-white"
-                  >
-                    Try again
-                  </Button>
+                  <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Tap Generate to create</p>
                 </div>
               </div>
             ) : (
-              <div className="p-4">
-                <Image
-                  src={currentImageUrl}
-                  alt={prompt}
-                  width={width}
-                  height={height}
-                  className="w-full h-auto object-contain rounded-xl"
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                  unoptimized
-                />
+              <div className="relative w-full h-full group">
+                {!loadError ? (
+                  <Image
+                    src={currentImageUrl}
+                    alt="Generated image"
+                    fill
+                    className="object-cover"
+                    onError={() => setLoadError(true)}
+                    onLoad={() => setLoadError(false)}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-white/60">
+                    <p className="text-sm">Failed to load image</p>
+                  </div>
+                )}
+                
+                {/* Mobile Action Buttons */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsFullscreen(true)}
+                    className="bg-white/20 text-white h-8 px-2"
+                  >
+                    <Eye className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={downloadImage}
+                    className="bg-white/20 text-white h-8 px-2"
+                  >
+                    <Download className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Action Buttons - Fixed at bottom when image exists */}
-      {currentImageUrl && !isGenerating && !loadError && (
-        <div className="flex gap-2 p-4 pt-0">
+        {/* Fixed Generate Button at Bottom - Mobile */}
+        <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/95 via-black/80 to-transparent backdrop-blur-sm">
           <Button
-            variant="ghost"
-            onClick={copyImageUrl}
-            className="flex-1 bg-white/10 border border-white/20 text-white hover:bg-white/20"
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || isGenerating}
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-medium h-12 text-base rounded-xl"
           >
-            <Copy className="h-4 w-4 mr-2" />
-            Copy URL
-          </Button>
-          
-          <Button
-            variant="ghost"
-            onClick={downloadImage}
-            className="flex-1 bg-white/10 border border-white/20 text-white hover:bg-white/20"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Download
-          </Button>
-          
-          <Button
-            variant="ghost"
-            onClick={openFullscreen}
-            className="flex-1 bg-white/10 border border-white/20 text-white hover:bg-white/20"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Fullscreen
-          </Button>
-          
-          <Button
-            variant="ghost"
-            onClick={generateVariation}
-            className="flex-1 bg-white/10 border border-white/20 text-white hover:bg-white/20"
-          >
-            <Shuffle className="h-4 w-4 mr-2" />
-            Variation
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Image
+              </>
+            )}
           </Button>
         </div>
-      )}
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden md:flex flex-col h-full">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Prompt Input */}
+          <div>
+            <Label className="text-white/80 text-sm mb-2 block">
+              Describe your image
+            </Label>
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="a neon fox, cinematic, rim light, 85mm..."
+              className="min-h-[120px] max-h-[300px] bg-white/10 border-white/20 text-white placeholder:text-white/50 resize-vertical focus:bg-white/15"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleGenerate();
+                }
+              }}
+            />
+          </div>
+
+          {/* Desktop Controls */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-white/80 text-xs mb-1 block">Model</Label>
+              <Select value={imageModel} onValueChange={setImageModel}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="flux">flux</SelectItem>
+                  <SelectItem value="turbo">turbo</SelectItem>
+                  <SelectItem value="stability">stability</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white/80 text-xs mb-1 block">Aspect Ratio</Label>
+              <Select value={aspectRatio} onValueChange={(value: AspectRatio) => setAspectRatio(value)}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1:1">1:1 Square</SelectItem>
+                  <SelectItem value="3:4">3:4 Portrait</SelectItem>
+                  <SelectItem value="4:3">4:3 Landscape</SelectItem>
+                  <SelectItem value="9:16">9:16 Mobile</SelectItem>
+                  <SelectItem value="16:9">16:9 Wide</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white/80 text-xs mb-1 block">Seed</Label>
+              <div className="flex gap-1">
+                <Input
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="random"
+                  className="bg-white/10 border-white/20 text-white placeholder:text-white/50 h-9 text-xs"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLockSeed(!lockSeed)}
+                  className="h-9 w-9 p-0 bg-white/10 border border-white/20 hover:bg-white/20"
+                >
+                  {lockSeed ? (
+                    <Lock className="h-3 w-3 text-yellow-400" />
+                  ) : (
+                    <Unlock className="h-3 w-3 text-white/70" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Options */}
+          <div className="flex gap-4 text-sm flex-wrap">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="enhance"
+                checked={enhance}
+                onCheckedChange={(checked) => setEnhance(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
+              />
+              <Label htmlFor="enhance" className="text-white/80">Enhance quality</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="safe"
+                checked={safe}
+                onCheckedChange={(checked) => setSafe(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
+              />
+              <Label htmlFor="safe" className="text-white/80">Safe mode</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="nologo"
+                checked={nologo}
+                onCheckedChange={(checked) => setNologo(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
+              />
+              <Label htmlFor="nologo" className="text-white/80">Remove logo</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="private"
+                checked={isPrivate}
+                onCheckedChange={(checked) => setIsPrivate(checked as boolean)}
+                className="border-white/30 data-[state=checked]:bg-violet-600"
+              />
+              <Label htmlFor="private" className="text-white/80">Private generation</Label>
+            </div>
+          </div>
+
+          {/* Desktop Generate Button */}
+          <div>
+            <Button
+              onClick={handleGenerate}
+              disabled={!prompt.trim() || isGenerating}
+              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-medium h-12"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Image
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Desktop Image Preview */}
+          <div className="flex-1 min-h-[200px] rounded-2xl bg-black/30 border border-white/10 overflow-hidden relative">
+            {!currentImageUrl ? (
+              <div className="h-full flex items-center justify-center text-white/60">
+                <div className="text-center">
+                  <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>Enter a prompt and click Generate Image</p>
+                  <p className="text-sm opacity-75 mt-2">Images will appear here</p>
+                </div>
+              </div>
+            ) : (
+              <div className="relative w-full h-full group">
+                {!loadError ? (
+                  <Image
+                    src={currentImageUrl}
+                    alt="Generated image"
+                    fill
+                    className="object-contain cursor-pointer"
+                    onClick={() => setIsFullscreen(true)}
+                    onError={() => setLoadError(true)}
+                    onLoad={() => setLoadError(false)}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-white/60">
+                    <p>Failed to load image. Please try again.</p>
+                  </div>
+                )}
+                
+                {/* Desktop Action Buttons */}
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsFullscreen(true)}
+                    className="bg-black/50 text-white hover:bg-black/70"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={copyImageUrl}
+                    className="bg-black/50 text-white hover:bg-black/70"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={downloadImage}
+                    className="bg-black/50 text-white hover:bg-black/70"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={generateVariation}
+                    className="bg-black/50 text-white hover:bg-black/70"
+                  >
+                    <Shuffle className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Fullscreen Modal */}
       {isFullscreen && currentImageUrl && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-          <div className="relative max-w-[90vw] max-h-[90vh] flex flex-col">
-            {/* Close Button */}
+          <div className="relative max-w-4xl max-h-full w-full h-full flex items-center justify-center">
             <Button
               variant="ghost"
-              onClick={closeFullscreen}
-              className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white border-white/20"
+              size="sm"
+              onClick={() => setIsFullscreen(false)}
+              className="absolute top-4 right-4 z-10 bg-black/50 text-white hover:bg-black/70"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </Button>
             
-            {/* Fullscreen Image */}
-            <div className="flex-1 flex items-center justify-center">
+            <div className="relative w-full h-full flex items-center justify-center">
               <Image
                 src={currentImageUrl}
-                alt={prompt}
-                width={width}
-                height={height}
-                className="max-w-full max-h-full object-contain rounded-xl"
-                unoptimized
+                alt="Generated image fullscreen"
+                fill
+                className="object-contain"
+                onError={() => setLoadError(true)}
+                onLoad={() => setLoadError(false)}
               />
             </div>
             
             {/* Fullscreen Action Buttons */}
-            <div className="flex gap-3 mt-4 justify-center">
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
               <Button
                 variant="ghost"
                 onClick={copyImageUrl}
-                className="bg-white/10 border border-white/20 text-white hover:bg-white/20"
+                className="bg-black/50 border border-white/20 text-white hover:bg-black/70"
               >
                 <Copy className="h-4 w-4 mr-2" />
                 Copy URL
@@ -464,7 +565,7 @@ export default function ImageStudio() {
               <Button
                 variant="ghost"
                 onClick={downloadImage}
-                className="bg-white/10 border border-white/20 text-white hover:bg-white/20"
+                className="bg-black/50 border border-white/20 text-white hover:bg-black/70"
               >
                 <Download className="h-4 w-4 mr-2" />
                 Download
@@ -473,7 +574,7 @@ export default function ImageStudio() {
               <Button
                 variant="ghost"
                 onClick={generateVariation}
-                className="bg-white/10 border border-white/20 text-white hover:bg-white/20"
+                className="bg-black/50 border border-white/20 text-white hover:bg-black/70"
               >
                 <Shuffle className="h-4 w-4 mr-2" />
                 Variation

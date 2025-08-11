@@ -9,11 +9,12 @@ import { useAppStore } from '@/lib/store';
 import { Toaster } from '@/components/ui/sonner';
 
 export default function Home() {
-  const { isMobile, setIsMobile } = useAppStore();
+  const { setIsMobile } = useAppStore();
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
+      // Use a smaller breakpoint to ensure tablets and phones get mobile layout
+      setIsMobile(window.innerWidth < 768);
     };
 
     checkMobile();
@@ -22,13 +23,17 @@ export default function Home() {
   }, [setIsMobile]);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <Header />
       
-      <main className="flex-1 min-h-0 overflow-hidden">
-        {isMobile ? (
+      <main className="flex-1 min-h-0 overflow-hidden relative">
+        {/* Mobile Layout - Show tabs on small screens */}
+        <div className="md:hidden h-full flex flex-col">
           <MobileTabsWrapper />
-        ) : (
+        </div>
+        
+        {/* Desktop Layout - Show split view on larger screens */}
+        <div className="hidden md:block h-full">
           <div className="h-full grid grid-cols-[1.2fr_1fr] gap-0">
             {/* Chat Panel */}
             <div className="border-r border-white/10 min-h-0 overflow-hidden">
@@ -40,7 +45,7 @@ export default function Home() {
               <ImageStudio />
             </div>
           </div>
-        )}
+        </div>
       </main>
 
       {/* Footer */}
